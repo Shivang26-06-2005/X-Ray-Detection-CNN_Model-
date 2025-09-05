@@ -41,7 +41,7 @@ model = SimpleCNN(num_classes=4).to(device)
 
 # Load the saved weights
 try:
-    model.load_state_dict(torch.load(r"D:\XRAY DETECTION\X Ray Detection\XrayDetection.pth", map_location=device))
+    model.load_state_dict(torch.load(r"XrayDetection.pth", map_location=device))
     model.eval()
     print("Model loaded successfully!")
 except FileNotFoundError:
@@ -120,7 +120,7 @@ def index():
     """Serve the main webpage"""
     # Read the HTML file content
     try:
-        with open(r'D:\XRAY DETECTION\X Ray Detection\WebPage.html', 'r', encoding='utf-8') as f:
+        with open(r'WebPage.html', 'r', encoding='utf-8') as f:
             html_content = f.read()
         return html_content
     except FileNotFoundError:
@@ -182,4 +182,5 @@ def health_check():
 if __name__ == '__main__':
     print(f"Starting Flask server on device: {device}")
     print(f"Model classes: {CLASS_NAMES}")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
