@@ -4,8 +4,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
+import matplotlib.pyplot as plt
 
+# -------------------- Dataset --------------------
 class CovidDataset(Dataset):
     def __init__(self, root_dir, classes=None, limit_per_class=None):
         self.root_dir = root_dir
@@ -21,7 +23,13 @@ class CovidDataset(Dataset):
                 img_path = os.path.join(img_folder, fname)
                 mask_path = os.path.join(mask_folder, fname)
                 if os.path.exists(mask_path):
-                    self.files.append({"image": img_path, "mask": mask_path, "label": label, "class_name": cls, "filename": fname})
+                    self.files.append({
+                        "image": img_path,
+                        "mask": mask_path,
+                        "label": label,
+                        "class_name": cls,
+                        "filename": fname
+                    })
 
     def __len__(self):
         return len(self.files)
@@ -38,6 +46,7 @@ class CovidDataset(Dataset):
         combined = torch.tensor(combined, dtype=torch.float32).permute(2, 0, 1)
         return combined, entry["label"], entry["filename"], entry["class_name"]
 
+# -------------------- CNN Model --------------------
 class SimpleCNN(nn.Module):
     def __init__(self, num_classes=4):
         super(SimpleCNN, self).__init__()
@@ -60,6 +69,7 @@ class SimpleCNN(nn.Module):
         x = self.fc(x)
         return x
 
+# -------------------- Setup --------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 val_dataset = CovidDataset(r"D:\XRAY DETECTION\COVID-19_Radiography_Dataset\val")
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
@@ -76,6 +86,7 @@ all_pred_names = []
 
 class_names = val_dataset.classes
 
+# -------------------- Inference --------------------
 with torch.no_grad():
     for inputs, targets, filenames, true_names in val_loader:
         inputs, targets = inputs.to(device), targets.to(device)
@@ -87,12 +98,46 @@ with torch.no_grad():
         all_true_names.extend(true_names)
         all_pred_names.extend([class_names[p.item()] for p in predicted.cpu()])
 
-# Print predictions
-print("Sample Predictions (filename | true class | predicted class):")
-for fname, true_cls, pred_cls in zip(all_filenames, all_true_names, all_pred_names):
-    print(f"{fname} | {true_cls} | {pred_cls}")
-
+# -------------------- Metrics --------------------
 accuracy = accuracy_score(all_labels, all_preds)
 f1 = f1_score(all_labels, all_preds, average='weighted')
-print(f"\nValidation Accuracy: {accuracy:.4f}")
-print(f"Validation F1-score: {f1:.4f}")
+precision = precision_score(all_labels, all_preds, average=None)
+recall = recall_score(all_labels, all_preds, average=None)
+precision_macro = precision_score(all_labels, all_preds, average='macro')
+recall_macro = recall_score(all_labels, all_preds, average='macro')
+
+print("\nValidation Metrics:")
+print(f"Accuracy: {accuracy:.4f}")
+print(f"F1-score (weighted): {f1:.4f}")
+print(f"Precision (per class): {dict(zip(class_names, precision))}")
+print(f"Recall (per class): {dict(zip(class_names, recall))}")
+print(f"Macro Precision: {precision_macro:.4f}")
+print(f"Macro Recall: {recall_macro:.4f}")
+
+# -------------------- Confusion Matrix --------------------
+cm = confusion_matrix(all_labels, all_preds)
+
+fig, ax = plt.subplots(figsize=(8,6))
+im = ax.imshow(cm, cmap="Blues")
+
+# Ticks and labels
+ax.set_xticks(np.arange(len(class_names)))
+ax.set_yticks(np.arange(len(class_names)))
+ax.set_xticklabels(class_names)
+ax.set_yticklabels(class_names)
+plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+# Annotate numbers
+for i in range(len(class_names)):
+    for j in range(len(class_names)):
+        ax.text(j, i, cm[i, j], ha="center", va="center", color="black")
+
+# Add overall metrics as text on the plot
+metrics_text = f"Accuracy: {accuracy:.4f}\nMacro Precision: {precision_macro:.4f}\nMacro Recall: {recall_macro:.4f}"
+ax.text(0, -0.5, metrics_text, fontsize=10, ha="left", va="top", transform=ax.transAxes)
+
+ax.set_xlabel("Predicted")
+ax.set_ylabel("True")
+ax.set_title("Confusion Matrix with Metrics")
+plt.tight_layout()
+plt.show()
